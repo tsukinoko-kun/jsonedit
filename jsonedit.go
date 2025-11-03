@@ -248,6 +248,39 @@ func (d *Document[T]) createEncoder(w io.Writer) *customEncoder {
 	}
 }
 
+// encodeString writes a JSON string with minimal escaping (only escapes required characters)
+func (ce *customEncoder) encodeString(s string) error {
+	ce.w.Write([]byte(`"`))
+	for _, r := range s {
+		switch r {
+		case '"':
+			ce.w.Write([]byte(`\"`))
+		case '\\':
+			ce.w.Write([]byte(`\\`))
+		case '\n':
+			ce.w.Write([]byte(`\n`))
+		case '\r':
+			ce.w.Write([]byte(`\r`))
+		case '\t':
+			ce.w.Write([]byte(`\t`))
+		case '\b':
+			ce.w.Write([]byte(`\b`))
+		case '\f':
+			ce.w.Write([]byte(`\f`))
+		default:
+			// Escape control characters (0x00-0x1F) as \uXXXX
+			if r < 0x20 {
+				fmt.Fprintf(ce.w, `\u%04X`, r)
+			} else {
+				// Write the character as-is (UTF-8 encoding)
+				ce.w.Write([]byte(string(r)))
+			}
+		}
+	}
+	ce.w.Write([]byte(`"`))
+	return nil
+}
+
 func (ce *customEncoder) encode(v interface{}, depth int) error {
 	switch val := v.(type) {
 	case *OrderedMap:
@@ -259,9 +292,7 @@ func (ce *customEncoder) encode(v interface{}, depth int) error {
 	case []interface{}:
 		return ce.encodeArray(val, depth)
 	case string:
-		data, _ := json.Marshal(val)
-		_, err := ce.w.Write(data)
-		return err
+		return ce.encodeString(val)
 	case float64, bool, nil:
 		data, _ := json.Marshal(val)
 		_, err := ce.w.Write(data)
@@ -298,8 +329,9 @@ func (ce *customEncoder) encodeOrderedMap(om *OrderedMap, depth int) error {
 		}
 
 		// Write key
-		keyData, _ := json.Marshal(key)
-		ce.w.Write(keyData)
+		if err := ce.encodeString(key); err != nil {
+			return err
+		}
 		ce.w.Write([]byte(":"))
 
 		if ce.format.SpaceAfterColon {

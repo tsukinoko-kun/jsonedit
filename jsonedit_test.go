@@ -134,7 +134,7 @@ func TestParse(t *testing.T) {
   "description": "JSON editing library",
   "main": "jsonedit.go",
   "scripts": {
-    "test": "go test"
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "devDependencies": {
     "eslint": "^8.46.0",
@@ -152,7 +152,7 @@ func TestParse(t *testing.T) {
   "description": "JSON editing library",
   "main": "jsonedit.go",
   "scripts": {
-    "test": "go test"
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "zod": "^3.21.4"
