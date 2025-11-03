@@ -57,15 +57,15 @@ func (om *OrderedMap) Get(key string) (interface{}, bool) {
 }
 
 // Document represents a parsed JSON document with formatting preserved
-type Document struct {
-	TypedData   interface{}
+type Document[T interface{}] struct {
+	TypedData   T
 	Rest        *OrderedMap
 	Format      Format
 	OriginalMap *OrderedMap
 }
 
 // String serializes the document to a JSON string
-func (d *Document) String() (string, error) {
+func (d *Document[T]) String() (string, error) {
 	var buf bytes.Buffer
 	if err := d.Write(&buf); err != nil {
 		return "", err
@@ -74,7 +74,7 @@ func (d *Document) String() (string, error) {
 }
 
 // Write serializes the document to an io.Writer
-func (d *Document) Write(w io.Writer) error {
+func (d *Document[T]) Write(w io.Writer) error {
 	merged := d.mergeInOriginalOrder()
 	encoder := d.createEncoder(w)
 	if err := encoder.encode(merged, 0); err != nil {
@@ -90,8 +90,23 @@ func (d *Document) Write(w io.Writer) error {
 	return nil
 }
 
+func isNil[T any](x T) bool {
+	v := reflect.ValueOf(x)
+	// reflect.ValueOf(nil) yields zero Value — treat as nil
+	if !v.IsValid() {
+		return true
+	}
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface,
+		reflect.Map, reflect.Ptr, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
+
 // mergeInOriginalOrder merges typed and rest data in the original order
-func (d *Document) mergeInOriginalOrder() interface{} {
+func (d *Document[T]) mergeInOriginalOrder() interface{} {
 	if d.OriginalMap == nil {
 		return nil
 	}
@@ -100,9 +115,9 @@ func (d *Document) mergeInOriginalOrder() interface{} {
 
 	// Get typed fields mapping
 	typedFields := make(map[string]interface{})
-	if d.TypedData != nil {
+	if !isNil(d.TypedData) {
 		v := reflect.ValueOf(d.TypedData)
-		if v.Kind() == reflect.Ptr {
+		if v.Kind() == reflect.Pointer {
 			v = v.Elem()
 		}
 		t := v.Type()
@@ -193,7 +208,7 @@ type customEncoder struct {
 	format Format
 }
 
-func (d *Document) createEncoder(w io.Writer) *customEncoder {
+func (d *Document[T]) createEncoder(w io.Writer) *customEncoder {
 	return &customEncoder{
 		w:      w,
 		format: d.Format,
@@ -221,7 +236,7 @@ func (ce *customEncoder) encode(v interface{}, depth int) error {
 	default:
 		rv := reflect.ValueOf(val)
 		if rv.Kind() == reflect.Struct ||
-			(rv.Kind() == reflect.Ptr && rv.Elem().Kind() == reflect.Struct) {
+			(rv.Kind() == reflect.Pointer && rv.Elem().Kind() == reflect.Struct) {
 			return ce.encodeStruct(rv, depth)
 		}
 		data, err := json.Marshal(val)
@@ -327,7 +342,7 @@ func (ce *customEncoder) encodeArray(arr []interface{}, depth int) error {
 }
 
 func (ce *customEncoder) encodeStruct(v reflect.Value, depth int) error {
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 
@@ -362,7 +377,7 @@ func (ce *customEncoder) encodeStruct(v reflect.Value, depth int) error {
 }
 
 // Parse reads JSON from reader and parses it into typed and untyped data
-func Parse(r io.Reader, typedData interface{}) (*Document, error) {
+func Parse[T interface{}](r io.Reader, typedData T) (*Document[T], error) {
 	// Read all data
 	data, err := io.ReadAll(r)
 	if err != nil {
@@ -378,14 +393,14 @@ func Parse(r io.Reader, typedData interface{}) (*Document, error) {
 		return nil, err
 	}
 
-	doc := &Document{
+	doc := &Document[T]{
 		TypedData:   typedData,
 		Format:      format,
 		OriginalMap: ordered,
 	}
 
 	// If typedData is provided, unmarshal into it
-	if typedData != nil {
+	if !isNil(typedData) {
 		if err := json.Unmarshal(data, typedData); err != nil {
 			return nil, err
 		}
@@ -570,7 +585,7 @@ func extractRest(om *OrderedMap, typedData interface{}) *OrderedMap {
 	rest := NewOrderedMap()
 
 	v := reflect.ValueOf(typedData)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 
@@ -626,7 +641,7 @@ func isEmptyValue(v reflect.Value) bool {
 		return v.Uint() == 0
 	case reflect.Float32, reflect.Float64:
 		return v.Float() == 0
-	case reflect.Interface, reflect.Ptr:
+	case reflect.Interface, reflect.Pointer:
 		return v.IsNil()
 	}
 	return false

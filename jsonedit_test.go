@@ -7,15 +7,42 @@ import (
 	jsonedit "github.com/tsukinoko-kun/jsonedit"
 )
 
-type SimpleStruct struct {
-	Foo string `json:"foo"`
-	Bar int    `json:"bar"`
-	Baz bool
+type (
+	TestData interface {
+		SetDependency(name, version string)
+		DeleteDevDependency(name string)
+	}
+
+	SimpleStruct struct {
+		Foo string `json:"foo"`
+		Bar int    `json:"bar"`
+		Baz bool
+	}
+
+	PackageJson struct {
+		Dependencies    map[string]string `json:"dependencies"`
+		DevDependencies map[string]string `json:"devDependencies"`
+	}
+)
+
+func (s *SimpleStruct) SetDependency(name, version string) {
 }
 
-type PackageJson struct {
-	Dependencies    map[string]string `json:"dependencies"`
-	DevDependencies map[string]string `json:"devDependencies"`
+func (s *SimpleStruct) DeleteDevDependency(name string) {
+}
+
+func (s *PackageJson) SetDependency(name, version string) {
+	if s.Dependencies == nil {
+		s.Dependencies = make(map[string]string)
+	}
+	s.Dependencies[name] = version
+}
+
+func (s *PackageJson) DeleteDevDependency(name string) {
+	if s.DevDependencies == nil {
+		s.DevDependencies = make(map[string]string)
+	}
+	delete(s.DevDependencies, name)
 }
 
 type TestCase[T any] struct {
@@ -24,11 +51,11 @@ type TestCase[T any] struct {
 	typedData T
 	want      string
 	wantErr   bool
-	operation func(data *T)
+	operation func(data T)
 }
 
 func TestParse(t *testing.T) {
-	tests := []TestCase[any]{
+	tests := []TestCase[TestData]{
 		{
 			name:      "no changes 1",
 			r:         `{"foo": "bar", "bar": 42, "Baz": true}`,
@@ -73,16 +100,11 @@ func TestParse(t *testing.T) {
 }
 `,
 			typedData: &PackageJson{},
-			operation: func(data *any) {
-				if pkg, ok := (*data).(*PackageJson); ok { // Add pointer in type assertion
-					if pkg.Dependencies == nil {
-						pkg.Dependencies = make(map[string]string)
-					}
-					pkg.Dependencies["zod"] = "^3.21.4"
-					delete(pkg.DevDependencies, "prettier")
-					delete(pkg.DevDependencies, "eslint-config-prettier")
-					delete(pkg.DevDependencies, "eslint-plugin-prettier")
-				}
+			operation: func(pkg TestData) {
+				pkg.SetDependency("zod", "^3.21.4")
+				pkg.DeleteDevDependency("prettier")
+				pkg.DeleteDevDependency("eslint-config-prettier")
+				pkg.DeleteDevDependency("eslint-plugin-prettier")
 			},
 			want: `{
   "name": "json-edit",
@@ -119,7 +141,7 @@ func TestParse(t *testing.T) {
 				t.Fatal("Parse() succeeded unexpectedly")
 			}
 			if tt.operation != nil {
-				tt.operation(&got.TypedData)
+				tt.operation(got.TypedData)
 			}
 			gotStr, gotErr := got.String()
 			if gotErr != nil {
