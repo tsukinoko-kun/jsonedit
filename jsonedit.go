@@ -113,8 +113,9 @@ func (d *Document[T]) mergeInOriginalOrder() interface{} {
 
 	result := NewOrderedMap()
 
-	// Get typed fields mapping
+	// Get typed fields mapping and order
 	typedFields := make(map[string]interface{})
+	typedOrder := []string{}
 	if !isNil(d.TypedData) {
 		v := reflect.ValueOf(d.TypedData)
 		if v.Kind() == reflect.Pointer {
@@ -146,12 +147,28 @@ func (d *Document[T]) mergeInOriginalOrder() interface{} {
 				}
 
 				typedFields[name] = fieldValue.Interface()
+				typedOrder = append(typedOrder, name)
 			}
 		}
 	}
 
 	// Iterate through original order
+	typedIndex := 0
 	for _, key := range d.OriginalMap.Keys {
+		// Ensure any preceding typed keys that were missing in the original
+		// document are emitted before the current typed key.
+		if _, isTypedKey := typedFields[key]; isTypedKey {
+			for typedIndex < len(typedOrder) && typedOrder[typedIndex] != key {
+				missingKey := typedOrder[typedIndex]
+				if _, alreadySet := result.Values[missingKey]; !alreadySet {
+					if missingVal, ok := typedFields[missingKey]; ok {
+						result.Set(missingKey, missingVal, len(result.Keys))
+					}
+				}
+				typedIndex++
+			}
+		}
+
 		if typedVal, ok := typedFields[key]; ok {
 			// Check if the original value was an OrderedMap (nested object)
 			// and the typed value is a map
@@ -197,6 +214,22 @@ func (d *Document[T]) mergeInOriginalOrder() interface{} {
 				result.Set(key, val, len(result.Keys))
 			}
 		}
+
+		if typedIndex < len(typedOrder) && typedOrder[typedIndex] == key {
+			typedIndex++
+		}
+	}
+
+	// Append any remaining typed keys that were not present in the original
+	// document.
+	for typedIndex < len(typedOrder) {
+		key := typedOrder[typedIndex]
+		if _, alreadySet := result.Values[key]; !alreadySet {
+			if typedVal, ok := typedFields[key]; ok {
+				result.Set(key, typedVal, len(result.Keys))
+			}
+		}
+		typedIndex++
 	}
 
 	return result

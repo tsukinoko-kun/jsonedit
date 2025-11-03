@@ -126,6 +126,45 @@ func TestParse(t *testing.T) {
 `,
 			wantErr: false,
 		},
+		{
+			name: "package.json create dependencies key",
+			r: `{
+  "name": "json-edit",
+  "version": "0.1.0",
+  "description": "JSON editing library",
+  "main": "jsonedit.go",
+  "scripts": {
+    "test": "go test"
+  },
+  "devDependencies": {
+    "eslint": "^8.46.0",
+    "prettier": "^3.0.0"
+  }
+}
+`,
+			typedData: &PackageJson{},
+			operation: func(pkg TestData) {
+				pkg.SetDependency("zod", "^3.21.4")
+			},
+			want: `{
+  "name": "json-edit",
+  "version": "0.1.0",
+  "description": "JSON editing library",
+  "main": "jsonedit.go",
+  "scripts": {
+    "test": "go test"
+  },
+  "dependencies": {
+    "zod": "^3.21.4"
+  },
+  "devDependencies": {
+    "eslint": "^8.46.0",
+    "prettier": "^3.0.0"
+  }
+}
+`,
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
